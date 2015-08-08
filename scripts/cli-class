@@ -1,0 +1,32 @@
+#!/bin/bash
+
+FWDIR="$(cd `dirname $0`/..; pwd)"
+
+EASYCLI_HOME=$FWDIR
+
+CLASSPATH="${FWDIR}/conf"
+
+for cp in `ls $FWDIR/lib/*.jar` ;
+do
+    CLASSPATH=$CLASSPATH:$cp
+done
+
+
+
+CLASSPATH=$CLASSPATH:$FWDIR/bin
+
+echo $CLASSPATH
+
+# Find the java binary
+if [ -n "${JAVA_HOME}" ]; then
+      RUNNER="${JAVA_HOME}/bin/java"
+else
+    if [ `command -v java` ]; then
+        RUNNER="java"
+    else
+        echo -e "\033[0;31mJAVA_HOME is not set \033[0m" > %2
+        exit 1
+    fi
+fi
+
+exec $RUNNER -cp "$CLASSPATH" $JAVA_OPTS $@
