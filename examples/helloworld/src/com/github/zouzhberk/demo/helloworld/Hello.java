@@ -9,7 +9,7 @@ public class Hello {
 
 	@ActionMenu(value = "say", desc = "say hello")
 	public Object say(
-			@Param(value = "text", sname = "t", desc = "The words.") String text) {
+			@Param(value = "text", sname = "t", desc = "The words.", required = true) String text) {
 		return "say" + text;
 	}
 
@@ -19,6 +19,8 @@ public class Hello {
 	}
 
 	public Object help() {
+
+		// Arrays.stream(getClass().getMethods()).
 		return "";
 	}
 }

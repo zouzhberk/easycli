@@ -1,7 +1,6 @@
 package com.github.zouzhberk.cli;
 
-
-public class CliException extends Exception {
+public class CliException extends RuntimeException {
 
 	public CliException(String message, Throwable cause,
 			boolean enableSuppression, boolean writableStackTrace) {

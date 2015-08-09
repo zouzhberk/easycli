@@ -15,7 +15,7 @@ done
 
 CLASSPATH=$CLASSPATH:$FWDIR/bin
 
-echo $CLASSPATH
+#echo $CLASSPATH
 
 # Find the java binary
 if [ -n "${JAVA_HOME}" ]; then

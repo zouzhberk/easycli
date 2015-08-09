@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
-import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.stream.Stream;
 
@@ -18,7 +17,7 @@ public class EasyClient {
 		}
 
 		Arrays.stream(args);
-		String command = args[0];
+		// String command = args[0];
 		Stream<Class<?>> menus = registerMenuClasses();
 		menus.map((x) -> x.getAnnotation(ModuleMenu.class)).filter((x) -> true);
 

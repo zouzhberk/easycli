@@ -1,5 +1,7 @@
 package com.github.zouzhberk.cli;
 
+import java.lang.annotation.Annotation;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -15,11 +17,13 @@ import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
+import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
 import com.github.zouzhberk.cli.annotations.ActionMenu;
 import com.github.zouzhberk.cli.annotations.ModuleMenu;
+import com.github.zouzhberk.cli.annotations.Param;
 import com.github.zouzhberk.demo.helloworld.Hello;
 import com.github.zouzhberk.demo.helloworld.World;
 
@@ -47,8 +51,8 @@ public class EasyParser {
 		this.cmdClasses = classes;
 	}
 
-	private static Option buildHelpOption(String moduleName) {
-		return Option.builder("h").desc("display help info.").longOpt("help")
+	private static Option buildHelpOption() {
+		return Option.builder().desc("display help info.").longOpt("help")
 				.build();
 	}
 
@@ -59,7 +63,7 @@ public class EasyParser {
 		}
 
 		Options options = new Options();
-		options.addOption(buildHelpOption(mainModule));
+		options.addOption(buildHelpOption());
 		options.addOption(Option.builder("v").longOpt("version").hasArg(false)
 				.build());
 
@@ -110,6 +114,7 @@ public class EasyParser {
 			tmpArgs.add(args[i]);
 
 		}
+
 		actionArgs = Arrays.copyOfRange(args, optionaIndex, args.length);
 		if (tmpArgs.isEmpty()) {
 			println("Must input a module name.");
@@ -123,27 +128,127 @@ public class EasyParser {
 			System.exit(parseOnlyMainModule(mainModule, actionArgs));
 		}
 
+		// parse subcommand.
 		Collections.reverse(tmpArgs);
 		// check if arg is a vailable module.
 		actionName = tmpArgs.remove(0);
 		moduleNames = tmpArgs;
-		findCommandClass(moduleNames.get(0)).ifPresent((clazz) -> {
-			findMenuMethod(actionName, clazz);
-		});
 
-		if (!findCommandClass(moduleNames.get(0)).isPresent()) {
+		Class<?> moduleClass = findCommandClass(moduleNames.get(0))
+				.orElse(null);
 
-		}
-
-		actionArgs = Arrays.copyOfRange(args, optionaIndex, args.length);
-		System.out.println("actionName = " + actionName);
-		System.out.println("modulenames = " + moduleNames);
-		System.out.println("action args = " + Arrays.deepToString(actionArgs));
-		System.out.println(menuArgs);
-		if (moduleNames.isEmpty()) {
+		if (moduleClass == null) {
+			println("No such subcommand found.");
 			printMainMoudleHelp();
+			System.exit(3);
 		}
 
+		Method actionMethod = findMenuMethod(actionName, moduleClass)
+				.orElseGet(() -> {
+					println("No such action supported.");
+					return null;
+				});
+
+		if (actionMethod == null || actionName.equalsIgnoreCase("help")) {
+			ModuleMenu menu = moduleClass.getAnnotation(ModuleMenu.class);
+			println(menu.desc());
+
+			println("Type '" + String.join(" ", mainModule, menu.value())
+					+ " <action> --help ' for help on a specific action.");
+			println("Avaliable actions:");
+			Method[] actionMethods = moduleClass.getDeclaredMethods();
+			Stream.of(actionMethods)
+					.map((x) -> x.getAnnotation(ActionMenu.class))
+					.filter(Objects::nonNull)
+					.forEach((x) -> println("\t" + x.value()));
+			System.exit(4);
+		}
+
+		Options options = new Options();
+		OptionGroup group = getParameters(actionMethod, actionArgs);
+
+		if (group == null) {
+			Object obj;
+			try {
+				obj = moduleClass.newInstance();
+				println(actionMethod.invoke(obj));
+			} catch (InstantiationException | IllegalAccessException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (IllegalArgumentException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (InvocationTargetException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			System.exit(0);
+		}
+		options.addOptionGroup(group);
+		options.addOption(buildHelpOption());
+
+		CommandLineParser parser = new DefaultParser();
+
+		CommandLine line;
+		try {
+
+			line = parser.parse(options, actionArgs);
+
+			// System.out.println(line.getArgList());
+			if (actionArgs.length == 0 || line.hasOption("help")) {
+				printHelper(
+						options,
+						String.join(" ",
+								menuArgs.stream().toArray(String[]::new)));
+				System.exit(5);
+			}
+
+		} catch (ParseException e) {
+			System.out.println(e.getMessage());
+			printHelper(options,
+					String.join(" ", menuArgs.stream().toArray(String[]::new)));
+			System.exit(6);
+		}
+
+	}
+
+	protected static Object invokeMethod(Method method, CommandLine line) {
+		return null;
+	}
+
+	private static OptionGroup getParameters(Method method, String[] rightArgs) {
+		// System.out.println(method);
+		// Type[] types = method.getGenericParameterTypes();
+		Annotation[][] params = method.getParameterAnnotations();
+
+		if (params == null || params.length == 0) {
+			return null;
+		}
+
+		OptionGroup group = new OptionGroup();
+
+		Stream.of(method.getParameterAnnotations())
+				.forEach(
+						(param) -> {
+							group.addOption(Stream
+									.of(param)
+									.filter((x) -> x.annotationType().equals(
+											Param.class))
+									.findFirst()
+									.map((x) -> Param.class.cast(x))
+									.map((x) -> Option.builder(x.sname())
+											.longOpt(x.value())
+											.required(x.required())
+											.desc(x.desc()).hasArg().build())
+									.orElseThrow(
+											() -> {
+												throw new CliException(
+														"All args must annotated by Param annotation class.");
+											}));
+
+						});
+		// group.addOption(buildHelpOption());
+		return group;
 	}
 
 	private Optional<Class<?>> findCommandClass(String modulename) {
@@ -179,29 +284,6 @@ public class EasyParser {
 
 	public static void main(String[] args) {
 		EasyParser.from(args);
-
-		CommandLineParser parser = new DefaultParser();
-		Options options = new Options();
-		// OptionGroup group = new OptionGroup();
-		options.addOption(Option.builder("t").longOpt("text")
-				.desc("say a text.").hasArg().required().build());
-
-		options.addOption(Option.builder("h").longOpt("help")
-				.desc("Dislpay help messages.").hasArg(false).build());
-		// options.addOptionGroup(group);
-		CommandLine line;
-		try {
-			line = parser.parse(options, args);
-
-			// System.out.println(line.getArgList());
-			if (line.getArgList().isEmpty() || line.hasOption("help")) {
-				printHelper(options, "helloworld");
-			}
-
-		} catch (ParseException e) {
-			System.out.println(e.getMessage());
-			printHelper(options, "helloworld");
-		}
 	}
 
 	public static void printHelper(Options options, String text) {
