@@ -28,6 +28,7 @@ import com.github.zouzhberk.demo.helloworld.Hello;
 import com.github.zouzhberk.demo.helloworld.World;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.internal.Primitives;
 
 public class EasyParser {
 
@@ -72,7 +73,7 @@ public class EasyParser {
 		CommandLineParser parser = new DefaultParser();
 		try {
 			CommandLine commandline = parser.parse(options, actionArgs);
-			if (commandline.hasOption('h')) {
+			if (commandline.hasOption("help")) {
 				printMainMoudleHelp();
 				return 0;
 			}
@@ -235,13 +236,25 @@ public class EasyParser {
 
 			int i = 0;
 			for (Option option : group) {
+				Type type = types[i];
+
+				if (Primitives.isPrimitive(type)) {
+					throw new CliException(
+							"The primitive type is unsupported. action method = "
+									+ method);
+				}
 
 				if (line.hasOption(option.getOpt())) {
 					try {
 						args[i] = line.getParsedOptionValue(option.getOpt());
+						if (args[i] == null) {
+							args[i] = gson.fromJson(
+									line.getOptionValue(option.getOpt()), type);
+						}
 					} catch (ParseException e) {
+						e.printStackTrace();
 						args[i] = gson.fromJson(
-								line.getOptionValue(option.getOpt()), types[i]);
+								line.getOptionValue(option.getOpt()), type);
 					}
 				} else {
 					args[i] = null;
@@ -311,10 +324,6 @@ public class EasyParser {
 		this.cmdClasses.stream().map((x) -> x.getAnnotation(ModuleMenu.class))
 				.filter(Objects::nonNull)
 				.forEach((x) -> println("\t" + x.value()));
-	}
-
-	protected void printSubModuleHelp() {
-
 	}
 
 	public static EasyParser from(String[] args) {
