@@ -9,7 +9,8 @@ public class Hello {
 
 	@ActionMenu(value = "say", desc = "say hello")
 	public Object say(
-			@Param(value = "text", sname = "t", desc = "The words.", required = true) String text) {
+			@Param(value = "text", sname = "t", desc = "The words.", required = true) String text,
+			@Param(value = "username", sname = "u", desc = "user name.") String username) {
 		return "say" + text;
 	}
 

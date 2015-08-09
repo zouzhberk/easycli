@@ -3,6 +3,7 @@ package com.github.zouzhberk.cli;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -17,7 +18,6 @@ import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
-import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
@@ -26,6 +26,8 @@ import com.github.zouzhberk.cli.annotations.ModuleMenu;
 import com.github.zouzhberk.cli.annotations.Param;
 import com.github.zouzhberk.demo.helloworld.Hello;
 import com.github.zouzhberk.demo.helloworld.World;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 
 public class EasyParser {
 
@@ -165,9 +167,9 @@ public class EasyParser {
 		}
 
 		Options options = new Options();
-		OptionGroup group = getParameters(actionMethod, actionArgs);
+		List<Option> group = getParameters(actionMethod, actionArgs);
 
-		if (group == null) {
+		if (group.isEmpty()) {
 			Object obj;
 			try {
 				obj = moduleClass.newInstance();
@@ -184,7 +186,8 @@ public class EasyParser {
 			}
 			System.exit(0);
 		}
-		options.addOptionGroup(group);
+		group.stream().forEach((x) -> options.addOption(x));
+
 		options.addOption(buildHelpOption());
 
 		CommandLineParser parser = new DefaultParser();
@@ -203,6 +206,8 @@ public class EasyParser {
 				System.exit(5);
 			}
 
+			println(invokeMethod(moduleClass, actionMethod, group, line));
+
 		} catch (ParseException e) {
 			System.out.println(e.getMessage());
 			printHelper(options,
@@ -212,43 +217,78 @@ public class EasyParser {
 
 	}
 
-	protected static Object invokeMethod(Method method, CommandLine line) {
+	public static Gson createGson() {
+
+		return new GsonBuilder().serializeNulls().create();
+	}
+
+	private static Gson gson = createGson();
+
+	protected static Object invokeMethod(Class<?> clazz, Method method,
+			List<Option> group, CommandLine line) {
+
+		try {
+			Object object = clazz.newInstance();
+			Object[] args = new Object[group.size()];
+
+			Type[] types = method.getGenericParameterTypes();
+
+			int i = 0;
+			for (Option option : group) {
+
+				if (line.hasOption(option.getOpt())) {
+					try {
+						args[i] = line.getParsedOptionValue(option.getOpt());
+					} catch (ParseException e) {
+						args[i] = gson.fromJson(
+								line.getOptionValue(option.getOpt()), types[i]);
+					}
+				} else {
+					args[i] = null;
+				}
+				i++;
+			}
+
+			return method.invoke(object, args);
+		} catch (InstantiationException | IllegalAccessException e) {
+			e.printStackTrace();
+		} catch (IllegalArgumentException e) {
+			e.printStackTrace();
+		} catch (InvocationTargetException e) {
+			e.printStackTrace();
+		}
 		return null;
 	}
 
-	private static OptionGroup getParameters(Method method, String[] rightArgs) {
-		// System.out.println(method);
-		// Type[] types = method.getGenericParameterTypes();
+	private static List<Option> getParameters(Method method, String[] rightArgs) {
 		Annotation[][] params = method.getParameterAnnotations();
 
+		List<Option> list = new ArrayList<>();
 		if (params == null || params.length == 0) {
-			return null;
+			return list;
 		}
 
-		OptionGroup group = new OptionGroup();
+		Class<?>[] paramClasses = method.getParameterTypes();
 
-		Stream.of(method.getParameterAnnotations())
-				.forEach(
-						(param) -> {
-							group.addOption(Stream
-									.of(param)
-									.filter((x) -> x.annotationType().equals(
-											Param.class))
-									.findFirst()
-									.map((x) -> Param.class.cast(x))
-									.map((x) -> Option.builder(x.sname())
-											.longOpt(x.value())
-											.required(x.required())
-											.desc(x.desc()).hasArg().build())
-									.orElseThrow(
-											() -> {
-												throw new CliException(
-														"All args must annotated by Param annotation class.");
-											}));
+		for (int i = 0; i < params.length; i++) {
+			Annotation[] param = params[i];
+			final Class<?> clazz = paramClasses[i];
+			list.add(Stream
+					.of(param)
+					.filter((x) -> x.annotationType().equals(Param.class))
+					.findFirst()
+					.map((x) -> Param.class.cast(x))
+					.map((x) -> Option.builder(x.sname()).longOpt(x.value())
+							.required(x.required()).desc(x.desc()).hasArg()
+							.type(clazz).build())
+					.orElseThrow(
+							() -> {
+								throw new CliException(
+										"All args must annotated by Param annotation class.");
+							}));
+		}
 
-						});
-		// group.addOption(buildHelpOption());
-		return group;
+		return list;
 	}
 
 	private Optional<Class<?>> findCommandClass(String modulename) {
@@ -283,6 +323,7 @@ public class EasyParser {
 	}
 
 	public static void main(String[] args) {
+
 		EasyParser.from(args);
 	}
 
